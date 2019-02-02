@@ -33,8 +33,7 @@ class Task:
                                                    .get('content-length', 0)
                     self.resp_body = await resp.text()
                     self.resp_HTTP_status = resp.status
-            except Exception as e:
-                print(f"EXCEPTION Task#{self.id}: {e}")
+            except Exception:                
                 self.status = Status.Error
 
     def __str__(self):

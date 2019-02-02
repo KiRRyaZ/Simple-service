@@ -1,7 +1,7 @@
 import asyncio
 from collections import OrderedDict
 from functools import partial
-from json import dumps
+from json import dumps, JSONDecodeError
 import time
 
 from aiohttp import web
@@ -25,8 +25,14 @@ def _defalt_serializer(obj):
     return str(obj)
 
 
+def _log_task(action, id=None, time_=None):
+    id_str = "" if id is None else f"#{id}"
+    time_str = f" - {time_:.5f}" if time_ else ""
+    print(f"{time.asctime()} {action:9} Task{id_str}{time_str}")
+
+
 async def get_handler(request):
-    print(f"{time.asctime()} GET Task")
+    _log_task("GET")
     if 'id' in request.query:
         try:
             key = int(request.query['id'])
@@ -47,26 +53,32 @@ async def get_handler(request):
 
 
 async def post_handler(request):
-    data = await request.json()
-    if 'url' in data:
-        new_task = Task(data['url'])
-        print(f"{time.asctime()} POST  Task#{new_task.id}")
-        app['tasks'][new_task.id] = new_task
-        await request.app['working_queue'].put(new_task)
-        data = {'id': new_task.id}
-    else:
-        data = {'error': "You need to specify url"}
+    try:
+        data = await request.json()
+        if 'url' in data:
+            new_task = Task(data['url'])
+            _log_task("POST", new_task.id)
+            app['tasks'][new_task.id] = new_task
+            await request.app['working_queue'].put(new_task)
+            data = {'id': new_task.id}
+        else:
+            data = {'error': "You need to specify an url"}
+    except JSONDecodeError:
+        data = {'error': "You need to post a valid JSON"}
     return web.json_response(data)
 
 
 async def task_handler(app):
     while True:
         task = await app['working_queue'].get()
+        _log_task("START", task.id)
         start = time.time()
-        print(f"{time.asctime()} START Task#{task.id}")
         await task()        
         end = time.time()
-        print(f"{time.asctime()} READY Task#{task.id} - {end - start}")
+        if task.status == Status.Error:
+            _log_task("EXCEPTION", task.id)
+        else:
+            _log_task("READY", task.id, end-start)
 
 
 async def run_service(app):
